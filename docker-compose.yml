@@ -2,8 +2,8 @@ services:
   dynamodb-local:
     image: amazon/dynamodb-local:latest
     container_name: dynamodb-local
-    mem_limit: ${DYNAMODB_MEMORY_LIMIT:-512m}
-    memswap_limit: ${DYNAMODB_MEMORY_SWAP_LIMIT:-512m}
+    mem_limit: ${DYNAMODB_MEMORY_LIMIT:-256m}
+    memswap_limit: ${DYNAMODB_MEMORY_SWAP_LIMIT:-256m}
     cpus: ${DYNAMODB_CPU_LIMIT:-0.5}
     restart: on-failure:3
     # Процесс в образе работает под пользователем dynamodblocal (uid 1000),
@@ -32,10 +32,10 @@ services:
         required: false
     environment:
       - NODE_ENV=development
-      - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=1024}
-    mem_limit: ${APP_MEMORY_LIMIT:-1536m}
-    memswap_limit: ${APP_MEMORY_SWAP_LIMIT:-1536m}
-    cpus: ${APP_CPU_LIMIT:-1.5}
+      - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=768}
+    mem_limit: ${APP_MEMORY_LIMIT:-1024m}
+    memswap_limit: ${APP_MEMORY_SWAP_LIMIT:-1024m}
+    cpus: ${APP_CPU_LIMIT:-1.0}
     restart: on-failure:3
     volumes:
       - .:/app
@@ -58,9 +58,9 @@ services:
         required: false
     environment:
       - NODE_ENV=development
-      - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=1024}
-    mem_limit: ${BOT_MEMORY_LIMIT:-512m}
-    memswap_limit: ${BOT_MEMORY_SWAP_LIMIT:-512m}
+      - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=768}
+    mem_limit: ${BOT_MEMORY_LIMIT:-384m}
+    memswap_limit: ${BOT_MEMORY_SWAP_LIMIT:-384m}
     cpus: ${BOT_CPU_LIMIT:-0.5}
     restart: on-failure:3
     volumes:

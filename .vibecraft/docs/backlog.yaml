@@ -456,3 +456,39 @@ tasks:
       актуализирован. Проверено: compose поднимается, 11 таблиц создаются и
       переживают пересоздание контейнера, /api/health = ok database connected,
       typecheck/lint/build проходят."
+  - id: task-0201
+    title:
+      'При запуске docker compose up -d на VPS с 1 CPU (сервер 2 RAM / 1 CPU /
+      50 NVMe) возникает ошибка: "Error response fr...'
+    description:
+      'При запуске docker compose up -d на VPS с 1 CPU (сервер 2 RAM / 1
+      CPU / 50 NVMe) возникает ошибка: "Error response from daemon: range of
+      CPUs is from 0.01 to 1.00, as there are only 1 CPUs available" при
+      создании контейнера app (сервис app). Причина: в docker-compose.yml задан
+      лимит процессора (например, cpus: 2 или cpu_count выше 1), который
+      превышает число доступных ядер. Задача: исправить docker-compose.yml так,
+      чтобы приложение поднималось на сервере с 1 CPU и 2 GB RAM: убрать или
+      снизить жёсткие лимиты CPU для сервисов app и bot до допустимых значений
+      (не больше 1.00, либо вообще убрать ограничения cpus), при необходимости
+      пересмотреть лимиты памяти, чтобы всё помещалось в 2 GB RAM (app +
+      dynamodb-local + bot). Существующую инфраструктуру не ломать: сервис
+      dynamodb-local с volume, health-check, миграции, bot-профиль с npm run
+      bot:polling должны работать как раньше. Пользовательский результат: на VPS
+      с 1 CPU команда docker compose up -d успешно создаёт и запускает все
+      контейнеры, после чего docker compose exec app npm run db:migrate и docker
+      compose --profile bot up -d bot работают, бот отвечает в Telegram.'
+    status: completed
+    acceptance_criteria:
+      - Запрос пользователя выполнен полностью
+    meta:
+      quick_implement_marker: quick_implement:call_509a416648bc449c8d73c7e4
+    summary:
+      "В docker-compose.yml устранены недопустимые лимиты для VPS 1 CPU / 2 GB
+      RAM: cpus для app снижен с 1.5 до 1.0 (допустимо при одном ядре), лимиты
+      памяти пересмотрены — dynamodb-local 512m→256m, app 1536m→1024m, bot
+      512m→384m (суммарно 1664m, помещается в 2 GB с запасом на ОС); heap
+      Node.js по умолчанию снижен до 768m. Инфраструктура сохранена: volume,
+      health-check dynamodb-local, миграции и bot-профиль работают. Проверено:
+      docker compose up -d пересоздаёт и запускает все контейнеры, db:migrate
+      завершается успешно, контейнер bot из профиля bot стартует,
+      typecheck/lint/build проходят без ошибок."
