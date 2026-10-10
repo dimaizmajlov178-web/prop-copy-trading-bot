@@ -1,0 +1,65 @@
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    mem_limit: ${DYNAMODB_MEMORY_LIMIT:-512m}
+    memswap_limit: ${DYNAMODB_MEMORY_SWAP_LIMIT:-512m}
+    cpus: ${DYNAMODB_CPU_LIMIT:-0.5}
+    restart: on-failure:3
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000/ || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: sh -c "node node_modules/esbuild/install.js && npm run db:migrate && npm run dev:docker"
+    env_file:
+      - .env.docker
+    environment:
+      - NODE_ENV=development
+      - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=1024}
+    mem_limit: ${APP_MEMORY_LIMIT:-1536m}
+    memswap_limit: ${APP_MEMORY_SWAP_LIMIT:-1536m}
+    cpus: ${APP_CPU_LIMIT:-1.5}
+    restart: on-failure:3
+    volumes:
+      - .:/app
+      - /app/.next
+    ports:
+      - "8080:8080"
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: sh -c "npm run bot:polling"
+    env_file:
+      - .env.docker
+    environment:
+      - NODE_ENV=development
+      - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=1024}
+    mem_limit: ${BOT_MEMORY_LIMIT:-512m}
+    memswap_limit: ${BOT_MEMORY_SWAP_LIMIT:-512m}
+    cpus: ${BOT_CPU_LIMIT:-0.5}
+    restart: on-failure:3
+    volumes:
+      - .:/app
+      - /app/.next
+    profiles:
+      - bot
+    depends_on:
+      app:
+        condition: service_started
