@@ -1,15 +1,16 @@
 # Деплой Telegram-бота копитрейдинга на VPS
 
-Инструкция по переносу проекта на свой сервер (VPS) и запуску Next.js-приложения и Telegram-бота (long polling) в Docker Compose.
+Инструкция по переносу проекта на свой сервер (VPS) и запуску Next.js-приложения и Telegram-бота (long polling) в Docker Compose с **локальной DynamoDB** (DynamoDB Local) — без Yandex Cloud и AWS. Все данные хранятся на вашем сервере в Docker-volume.
 
 ## Требования
 
 - VPS с Linux (проверено на Ubuntu 22.04/24.04), минимум 2 ГБ RAM.
-- Установленные [Docker Engine](https://docs.docker.com/engine/install/) и Docker Compose plugin (`docker compose version` — v2+).
+- Установленные [Docker Engine](https://docs.docker.com/engine/install/) и Docker Compose plugin (`docker compose version` — v2.24+).
 - Git (или другой способ переноса репозитория).
 - Открытый порт **8080** (или reverse-proxy: nginx/Caddy) для доступа к приложению.
 - Токен Telegram-бота от [@BotFather](https://t.me/BotFather).
-- Доступ к DynamoDB-совместимому Document API Yandex Cloud (endpoint таблицы и статический ключ сервисного аккаунта).
+
+Реквизиты Yandex Cloud / AWS **не требуются**: база поднимается локально сервисом `dynamodb-local` из compose.
 
 ## 1. Перенос репозитория на VPS
 
@@ -26,44 +27,40 @@ cd /opt/copybot
 rsync -av --exclude node_modules --exclude .next ./ user@vps-host:/opt/copybot/
 ```
 
-## 2. Настройка переменных окружения (.env.docker)
+## 2. Настройка переменных окружения (.env)
 
-Все сервисы Docker Compose читают переменные из файла `.env.docker` в корне проекта. Скопируйте шаблон и заполните его:
+Создайте в корне проекта файл `.env` с одним обязательным параметром — токеном бота:
 
 ```shell
-cp .env.docker .env.docker.local   # (опционально, бэкап шаблона)
-nano .env.docker
+nano .env
 ```
-
-Пример заполненного файла:
 
 ```dotenv
-# Application
-PORT=8080
-NODE_ENV=development
-
 # Telegram (впишите свой токен от @BotFather)
 TELEGRAM_BOT_TOKEN=1234567890:AA...ваш_токен...
-
-# Yandex Cloud Document API (DynamoDB-совместимый)
-DOCUMENT_API_ENDPOINT=https://docapi.serverless.yandexcloud.net/ru-central1/<folder-id>/<table-id>
-DOCUMENT_API_REGION=ru-central1
-AWS_ACCESS_KEY_ID=<статический ключ сервисного аккаунта Yandex>
-AWS_SECRET_ACCESS_KEY=<секретная часть статического ключа>
-USE_DATABASE=true
 ```
+
+Больше ничего указывать не нужно: при отсутствии внешних реквизитов Document API (`DOCUMENT_API_ENDPOINT` и ключей) приложение, миграции и бот автоматически работают с локальной DynamoDB по эндпоинту `http://dynamodb-local:8000` внутри compose-сети.
 
 Пояснения:
 
-| Переменная                                    | Что указать                                                                                        |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `TELEGRAM_BOT_TOKEN`                          | Токен бота, полученный у @BotFather — вводите сами.                                                |
-| `DOCUMENT_API_ENDPOINT`                       | Endpoint Document API вашей таблицы в Yandex Cloud (тот же, что используется в текущем окружении). |
-| `DOCUMENT_API_REGION`                         | `ru-central1` для Yandex Cloud.                                                                    |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Статический ключ доступа сервисного аккаунта Yandex Cloud с правами на таблицу.                    |
-| `USE_DATABASE=true`                           | Включает реальную БД; при `false` приложение работает на мок-данных.                               |
+| Переменная                             | Что указать                                                          |
+| -------------------------------------- | -------------------------------------------------------------------- |
+| `TELEGRAM_BOT_TOKEN`                   | Токен бота, полученный у @BotFather — вводите сами.                  |
+| `USE_DATABASE=true` (из `.env.docker`) | Включает реальную БД; при `false` приложение работает на мок-данных. |
 
-> Если таблицы в Yandex Cloud ещё нет — создайте её (Document API, DynamoDB-совместимый режим) и возьмите её endpoint. Локальная `dynamodb-local` из compose используется только для разработки.
+Дополнительные дефолты берутся из `.env.docker` в корне проекта (порт приложения, режим БД). При желании их можно переопределить в своём `.env`.
+
+### Опционально: внешняя база Document API (Yandex Cloud)
+
+Если позже захотите хранить данные в Yandex Cloud вместо локальной базы, добавьте в `.env` реквизиты — приложение автоматически начнёт использовать их вместо DynamoDB Local:
+
+```dotenv
+DOCUMENT_API_ENDPOINT=https://docapi.serverless.yandexcloud.net/ru-central1/<folder-id>/<table-id>
+DOCUMENT_API_REGION=ru-central1
+AWS_ACCESS_KEY_ID=<статический ключ сервисного аккаунта>
+AWS_SECRET_ACCESS_KEY=<секретная часть ключа>
+```
 
 ## 3. Запуск приложения
 
@@ -71,7 +68,12 @@ USE_DATABASE=true
 docker compose up -d
 ```
 
-Compose поднимет `app` (Next.js на порту 8080); миграции применяются автоматически при старте контейнера. Проверить статус:
+Compose поднимет два сервиса:
+
+- `dynamodb-local` — локальная DynamoDB (порт 8000 доступен только внутри compose-сети);
+- `app` — Next.js на порту 8080.
+
+Проверить статус:
 
 ```shell
 docker compose ps
@@ -79,64 +81,29 @@ docker compose ps
 
 ## 4. Применение миграций БД
 
-Миграции уже выполнены при старте `app`, но при необходимости их можно запустить вручную:
+Миграции выполняются автоматически при старте `app`, но при необходимости их можно запустить вручную:
 
 ```shell
 docker compose exec app npm run db:migrate
 ```
 
-## 5. Автозапуск Telegram-бота (long polling)
-
-Бот должен работать постоянно и переживать перезагрузку VPS. Есть два варианта.
-
-### Вариант A (рекомендуется): docker-сервис `bot` в Compose
-
-В `docker-compose.yml` уже добавлен сервис `bot` (профиль `bot`), который запускает `npm run bot:polling` рядом с приложением и автоматически перезапускается:
+## 5. Запуск Telegram-бота (long polling)
 
 ```shell
-docker compose --profile bot up -d
+docker compose --profile bot up -d bot
 ```
 
-Чтобы профиль `bot` включался автоматически (в том числе после перезагрузки VPS), добавьте в `.env.docker` строку:
+Сервис `bot` запускает `npm run bot:polling` рядом с приложением и автоматически перезапускается (`restart: on-failure`).
+
+Чтобы бот включался автоматически (в том числе после перезагрузки VPS), добавьте в `.env` строку:
 
 ```dotenv
 COMPOSE_PROFILES=bot
 ```
 
-и выполните `docker compose up -d` ещё раз. С `restart: on-failure` контейнер бота перезапускается Docker'ом автоматически; убедитесь, что Docker-демон стартует при загрузке системы (`sudo systemctl enable docker`).
+и выполните `docker compose up -d` ещё раз. Убедитесь, что Docker-демон стартует при загрузке системы (`sudo systemctl enable docker`).
 
 > Важно: одновременно может работать только один процесс polling. Если бот запущен через Compose, не запускайте `npm run bot:polling` вручную на хосте.
-
-### Вариант B: systemd-юнит на хосте
-
-Если предпочитаете запускать polling без Docker (нужны Node.js на хосте, `npm ci` в каталоге проекта и файл `.env` с теми же переменными, что и в `.env.docker` — скрипт читает его через `dotenv`):
-
-Создайте `/etc/systemd/system/copybot-polling.service`:
-
-```ini
-[Unit]
-Description=Telegram copy-trading bot (long polling)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/copybot
-ExecStart=/usr/bin/npm run bot:polling
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Включите и запустите:
-
-```shell
-sudo systemctl daemon-reload
-sudo systemctl enable --now copybot-polling
-sudo journalctl -u copybot-polling -f   # логи бота
-```
 
 ## 6. Проверка работоспособности
 
@@ -148,23 +115,25 @@ sudo journalctl -u copybot-polling -f   # логи бота
 
    Ожидается JSON-ответ со статусом `ok`.
 
-2. Telegram-бот: напишите боту `/start` в Telegram — он должен ответить. Логи polling-процесса:
+2. Telegram-бот: напишите боту `/start` в Telegram — он должен ответить. Логи:
 
    ```shell
-   docker compose logs -f bot          # вариант A
-   sudo journalctl -u copybot-polling -f   # вариант B
+   docker compose logs -f bot
    ```
 
    При старте бот валидирует токен (`getMe`) и снимает webhook — в логах должны быть сообщения «Токен валиден».
 
+## Хранение данных
+
+Все данные (пользователи, счета, подписки, позиции-копии и т.д.) хранятся в локальной DynamoDB в Docker-volume `dynamodb_data` на вашем сервере. Volume переживает перезапуск контейнеров, пересоздание через `docker compose up -d --force-recreate` и перезагрузку VPS. Для бэкапа можно скопировать данные volume (например, `docker run --rm -v <project>_dynamodb_data:/data -v $(pwd):/backup alpine tar czf /backup/dynamodb-data.tgz -C /data .`).
+
 ## 7. Обновление версии на VPS
 
 ```shell
-git pull                      # или повторный rsync
-docker compose up -d          # перезапуск приложения
-docker compose exec app npm run db:migrate   # если менялась схема
-# бот в docker-варианте подхватит код автоматически (код примаунчен);
-# в systemd-варианте: sudo systemctl restart copybot-polling
+git pull                                        # или повторный rsync
+docker compose up -d                            # перезапуск приложения
+docker compose exec app npm run db:migrate      # если менялась схема
+docker compose --profile bot up -d bot          # если бот ещё не запущен
 ```
 
 ## Используемые npm-скрипты

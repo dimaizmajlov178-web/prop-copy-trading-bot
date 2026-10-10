@@ -6,9 +6,13 @@ services:
     memswap_limit: ${DYNAMODB_MEMORY_SWAP_LIMIT:-512m}
     cpus: ${DYNAMODB_CPU_LIMIT:-0.5}
     restart: on-failure:3
-    ports:
-      - "8000:8000"
-    command: "-jar DynamoDBLocal.jar -sharedDb"
+    # Процесс в образе работает под пользователем dynamodblocal (uid 1000),
+    # а volume при первом запуске создаётся от root — запускаем от root,
+    # чтобы sqlite мог писать файлы БД в volume.
+    user: root
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
     healthcheck:
       test:
         ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000/ || exit 1"]
@@ -24,6 +28,8 @@ services:
     command: sh -c "node node_modules/esbuild/install.js && npm run db:migrate && npm run dev:docker"
     env_file:
       - .env.docker
+      - path: .env
+        required: false
     environment:
       - NODE_ENV=development
       - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=1024}
@@ -48,6 +54,8 @@ services:
     command: sh -c "npm run bot:polling"
     env_file:
       - .env.docker
+      - path: .env
+        required: false
     environment:
       - NODE_ENV=development
       - NODE_OPTIONS=${APP_NODE_OPTIONS:---max-old-space-size=1024}
@@ -63,3 +71,6 @@ services:
     depends_on:
       app:
         condition: service_started
+
+volumes:
+  dynamodb_data:

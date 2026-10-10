@@ -406,8 +406,53 @@ tasks:
       Подготовлен деплой на VPS — создана инструкция DEPLOY.md (требования,
       перенос репозитория, настройка .env.docker с TELEGRAM_BOT_TOKEN и Yandex
       Document API, запуск docker compose up -d, миграции, автозапуск polling
-      через docker-сервис/профиль bot или systemd-юнит, проверка health и /start).
-      В docker-compose.yml добавлен сервис bot (профиль bot, npm run bot:polling,
-      restart on-failure) — существующая инфраструктура не изменена. Скрипты
-      bot:polling и db:migrate подтверждены в package.json; typecheck, lint и
-      build проходят.
+      через docker-сервис/профиль bot или systemd-юнит, проверка health и
+      /start). В docker-compose.yml добавлен сервис bot (профиль bot, npm run
+      bot:polling, restart on-failure) — существующая инфраструктура не
+      изменена. Скрипты bot:polling и db:migrate подтверждены в package.json;
+      typecheck, lint и build проходят.
+  - id: task-2584
+    title:
+      Пользователь выбрал хранение данных в локальной DynamoDB прямо на своём
+      VPS (вариант «DynamoDB Local»), без Yandex Cl...
+    description:
+      "Пользователь выбрал хранение данных в локальной DynamoDB прямо на
+      своём VPS (вариант «DynamoDB Local»), без Yandex Cloud и AWS. Задача:
+      подготовить проект к запуску на VPS с локальной базой. 1) Добавить в
+      docker-compose.yml второй сервис dynamodb-local (образ
+      amazon/dynamodb-local, порт внутри сети, данные сохранять в volume на
+      сервере), не ломая существующую инфраструктуру: app-контейнер,
+      health-check, HandshakeListener, Toaster, существующий DynamoDB-пломбинг в
+      lib/db.ts не трогать без необходимости. 2) Настроить конфигурацию
+      приложения так, чтобы при отсутствии внешних реквизитов Document API
+      (эндпоинт/ключей) в окружении приложение и скрипты (миграция
+      scripts/migrate.ts, polling scripts/telegram-polling.ts, движок
+      копирования) автоматически работали с локальным эндпоинтом DynamoDB
+      (http://dynamodb-local:8000 внутри compose-сети), а при наличии внешних
+      реквизитов — как раньше с ними. 3) Обновить DEPLOY.md: убрать требование
+      реквизитов Yandex Cloud для этого сценария, описать сценарий VPS с
+      локальной базой — .env только с TELEGRAM_BOT_TOKEN, docker compose up -d
+      (поднимает app + dynamodb-local), docker compose exec app npm run
+      db:migrate, docker compose --profile bot up -d bot, проверка curl
+      http://localhost:8080/api/health и /start в Telegram; указать, что данные
+      хранятся в volume на сервере. 4) Проверить, что npm run check и npm run
+      build проходят, и что локально docker compose поднимается с DynamoDB
+      Local, миграции применяются и health отвечает. Пользовательский результат:
+      пользователь клонирует проект на VPS, создаёт .env с одним токеном бота,
+      выполняет docker compose up -d + миграции + запуск бота — и бот работает с
+      сохранением данных на его сервере."
+    status: completed
+    acceptance_criteria:
+      - Запрос пользователя выполнен полностью
+    meta:
+      quick_implement_marker: quick_implement:call_92d009e4b0364279bf2b38fd
+    summary: "Сценарий VPS с локальной DynamoDB реализован: в docker-compose.yml
+      dynamodb-local хранит данные в volume dynamodb_data (порт только внутри
+      сети), env_file app/bot поддерживают .env только с TELEGRAM_BOT_TOKEN;
+      добавлен lib/dynamo-config.ts — при отсутствии реквизитов Document API
+      lib/db.ts, scripts/migrate.ts, polling и движок копирования автоматически
+      работают с http://dynamodb-local:8000, при наличии — с внешней базой как
+      раньше; DEPLOY.md переписан под локальный сценарий, features.md
+      актуализирован. Проверено: compose поднимается, 11 таблиц создаются и
+      переживают пересоздание контейнера, /api/health = ok database connected,
+      typecheck/lint/build проходят."

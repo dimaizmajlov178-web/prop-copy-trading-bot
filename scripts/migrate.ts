@@ -5,13 +5,16 @@ import {
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import { TABLE_SCHEMAS, TABLE_NAMES } from "../lib/schema";
+import { resolveDynamoConfig } from "../lib/dynamo-config";
+
+const config = resolveDynamoConfig();
 
 const client = new DynamoDBClient({
-  endpoint: process.env.DOCUMENT_API_ENDPOINT,
-  region: process.env.DOCUMENT_API_REGION ?? "ru-central1",
+  endpoint: config.endpoint,
+  region: config.region,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "",
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
   },
 });
 

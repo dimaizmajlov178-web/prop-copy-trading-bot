@@ -1,17 +1,19 @@
 import { DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { resolveDynamoConfig } from "./dynamo-config";
 
 const globalForDb = globalThis as unknown as {
   docClient: DynamoDBDocumentClient | undefined;
 };
 
 function createDocClient() {
+  const config = resolveDynamoConfig();
   const client = new DynamoDBClient({
-    endpoint: process.env.DOCUMENT_API_ENDPOINT,
-    region: process.env.DOCUMENT_API_REGION ?? "ru-central1",
+    endpoint: config.endpoint,
+    region: config.region,
     credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "",
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
     },
   });
 
